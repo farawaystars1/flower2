@@ -25,6 +25,11 @@ import { IntroCeremony } from "./intro.js";
 import { mountDedication, DedicationController } from "./dedication.js";
 import { SoftAudio, mountMuteButton } from "./audio.js";
 import { SceneDirector } from "./director.js";
+import {
+  enterFullscreen,
+  mountFullscreenButton,
+  isFullscreen,
+} from "./fullscreen.js";
 
 function detectQuality() {
   const cores = navigator.hardwareConcurrency || 4;
@@ -63,6 +68,9 @@ const dedicationEl = mountDedication(app);
 const dedication = new DedicationController(dedicationEl);
 dedication.enabled = false; // 不显示中间寄语
 mountMuteButton(app, audio);
+mountFullscreenButton(app, { target: document.documentElement });
+
+let fullscreenTried = false;
 
 let bokeh = [];
 let stars = [];
@@ -107,6 +115,9 @@ function resize() {
 
 resize();
 window.addEventListener("resize", resize);
+window.addEventListener("orientationchange", () => setTimeout(resize, 120));
+document.addEventListener("fullscreenchange", () => setTimeout(resize, 50));
+document.addEventListener("webkitfullscreenchange", () => setTimeout(resize, 50));
 
 const intro = new IntroCeremony({
   curtain,
@@ -176,6 +187,13 @@ async function onUserGesture() {
   if (!userInteracted) {
     userInteracted = true;
     await audio.unlock();
+  }
+  // First touch → enter immersive fullscreen (browsers require a gesture)
+  if (!fullscreenTried && !isFullscreen()) {
+    fullscreenTried = true;
+    await enterFullscreen(document.documentElement);
+    // Fullscreen changes layout — refresh canvas metrics
+    resize();
   }
   idleSinceInteract = 0;
 }
