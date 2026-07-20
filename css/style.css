@@ -309,33 +309,87 @@ html:-webkit-full-screen #app {
   height: 100%;
 }
 
+/* Mobile start gate — full-viewport tap target */
+#start-gate {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.1rem;
+  border: 0;
+  margin: 0;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+    env(safe-area-inset-bottom) env(safe-area-inset-left);
+  background:
+    radial-gradient(ellipse 70% 50% at 50% 42%, rgba(80, 28, 40, 0.45), rgba(10, 4, 6, 0.92));
+  color: rgba(247, 230, 223, 0.88);
+  font-family: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity 0.55s ease;
+}
+
+#start-gate.hide {
+  opacity: 0;
+  pointer-events: none;
+}
+
+#start-gate .gate-title {
+  font-size: clamp(1.4rem, 5vw, 2rem);
+  letter-spacing: 0.55em;
+  font-weight: 400;
+  text-indent: 0.55em;
+}
+
+#start-gate .gate-line {
+  font-size: clamp(0.95rem, 3.2vw, 1.15rem);
+  letter-spacing: 0.42em;
+  opacity: 0.72;
+  animation: gatePulse 2.2s ease-in-out infinite;
+}
+
+@keyframes gatePulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+
 /* iOS / mobile fallback when Fullscreen API is unavailable */
 html.immersive,
 html.immersive body {
-  position: fixed;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  height: 100dvh;
-  overflow: hidden;
-  background: #1a0c10;
-  overscroll-behavior: none;
-  touch-action: none;
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  height: var(--app-h, 100dvh) !important;
+  min-height: 100% !important;
+  min-height: -webkit-fill-available !important;
+  overflow: hidden !important;
+  background: #1a0c10 !important;
+  overscroll-behavior: none !important;
+  touch-action: none !important;
 }
 
 html.immersive #app {
-  position: fixed;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  height: 100dvh;
-  /* Cover notches when possible */
-  padding: env(safe-area-inset-top) env(safe-area-inset-right)
-    env(safe-area-inset-bottom) env(safe-area-inset-left);
-  box-sizing: border-box;
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: var(--app-h, 100dvh) !important;
+  min-height: -webkit-fill-available !important;
+  padding: 0 !important;
+  box-sizing: border-box !important;
 }
 
 html.immersive #c {
+  position: absolute !important;
+  inset: 0 !important;
   width: 100% !important;
   height: 100% !important;
 }

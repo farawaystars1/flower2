@@ -28,7 +28,10 @@ import { SceneDirector } from "./director.js";
 import {
   enterFullscreen,
   mountFullscreenButton,
+  mountStartGate,
   isImmersive,
+  isMobileDevice,
+  enterImmersiveFallback,
 } from "./fullscreen.js";
 
 function detectQuality() {
@@ -68,9 +71,13 @@ const dedicationEl = mountDedication(app);
 const dedication = new DedicationController(dedicationEl);
 dedication.enabled = false; // 不显示中间寄语
 mountMuteButton(app, audio);
-mountFullscreenButton(app, { target: document.documentElement });
+mountFullscreenButton(app, {
+  target: document.getElementById("app") || document.documentElement,
+  onChange: () => resize(),
+});
 
 let fullscreenTried = false;
+let experienceStarted = true; // flipped false on mobile until start-gate tap
 
 let bokeh = [];
 let stars = [];
@@ -140,8 +147,35 @@ const intro = new IntroCeremony({
   },
 });
 
-skipHint?.classList.add("show");
-setTimeout(() => skipHint?.classList.add("hide"), 4500);
+// Mobile: require an explicit start tap to enter immersive mode
+if (isMobileDevice()) {
+  experienceStarted = false;
+  intro.active = false;
+  if (curtain) {
+    curtain.classList.add("active");
+    curtain.style.opacity = "1";
+  }
+  if (hint) {
+    hint.style.animation = "none";
+    hint.style.opacity = "0";
+  }
+  if (skipHint) skipHint.style.opacity = "0";
+
+  mountStartGate(app, {
+    onStart: () => {
+      experienceStarted = true;
+      fullscreenTried = true;
+      userInteracted = true;
+      void audio.unlock();
+      resize();
+      // Jump into the garden after immersive is on
+      intro.skip();
+    },
+  });
+} else {
+  skipHint?.classList.add("show");
+  setTimeout(() => skipHint?.classList.add("hide"), 4500);
+}
 
 function triggerEgg() {
   // Soft full-screen gentle petal rain (restrained)
@@ -205,6 +239,9 @@ function onUserGesture() {
 }
 
 canvas.addEventListener("pointerdown", (e) => {
+  // Wait for mobile start-gate before garden interaction
+  if (!experienceStarted) return;
+
   onUserGesture();
 
   if (intro.active) {
@@ -223,10 +260,10 @@ canvas.addEventListener("pointerdown", (e) => {
   canvas.setPointerCapture?.(e.pointerId);
 });
 
-// Extra mobile path: some WebViews only keep gesture on touchend/click
 canvas.addEventListener(
   "touchend",
   (e) => {
+    if (!experienceStarted) return;
     onUserGesture();
     if (intro.active) {
       e.preventDefault();
@@ -351,6 +388,18 @@ function runIdleEvent(kind) {
 function tick(now) {
   requestAnimationFrame(tick);
   if (!running) return;
+
+  // Mobile: freeze sim until start gate is tapped
+  if (!experienceStarted) {
+    last = now;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    drawStars(ctx, stars, time);
+    drawBokeh(ctx, bokeh, time, 1);
+    drawMist(ctx, w, h, time, 1);
+    drawGround(ctx, w, h, fallen, 1);
+    return;
+  }
 
   const dt = clamp((now - last) / 1000, 0, 0.05);
   last = now;

@@ -41,7 +41,9 @@ export class IntroCeremony {
   }
 
   skip() {
-    if (!this.active || this.completed) return;
+    if (this.completed) return;
+    // Allow skip even if temporarily paused (e.g. mobile start-gate)
+    this.active = true;
     this._finish(true);
   }
 
