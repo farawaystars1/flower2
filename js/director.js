@@ -38,13 +38,17 @@ export class SceneDirector {
     this.cam.scale = 1 + Math.sin(time * 0.13) * 0.0035;
   }
 
-  applyCamera(ctx, w, h) {
-    ctx.setTransform(1, 0, 0, 1, 0, 0); // reset before dpr re-applied by caller
-    // Caller applies dpr then this — actually main uses setTransform(dpr...)
-    // So we translate in CSS pixel space after dpr is set:
+  applyCamera(ctx, w, h, dpr = 1) {
+    // Keep devicePixelRatio — resetting to identity caused a half-screen seam on HiDPI.
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.translate(w / 2 + this.cam.x, h / 2 + this.cam.y);
     ctx.scale(this.cam.scale, this.cam.scale);
     ctx.translate(-w / 2, -h / 2);
+  }
+
+  /** Reset to CSS-pixel space (with dpr) for full-screen overlays */
+  resetView(ctx, dpr = 1) {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
   updateDustBoost(dt) {

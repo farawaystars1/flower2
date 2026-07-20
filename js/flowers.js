@@ -340,7 +340,7 @@ export function drawMidSilhouettes(ctx, list, time, parallax, windX = 0) {
     ctx.rotate(m.rot + sway * 0.012 + windX * 0.04);
     ctx.globalAlpha =
       m.alpha * (0.85 + Math.sin(time * 0.6 + m.phase) * 0.15) * (1 + m.pulse * 0.25);
-    if (m.blur > 0.7) ctx.filter = "blur(1.2px)";
+    // No per-frame blur filter — soft look comes from alpha / scale only
 
     for (const p of m.petals) {
       ctx.save();
@@ -369,7 +369,6 @@ export function drawMidSilhouettes(ctx, list, time, parallax, windX = 0) {
     ctx.arc(0, 0, 14 * m.scale * (1 + m.pulse * 0.15), 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.filter = "none";
     ctx.restore();
   }
 }

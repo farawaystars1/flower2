@@ -44,7 +44,7 @@ const sky = document.getElementById("sky");
 const curtain = document.getElementById("curtain");
 const hint = document.getElementById("hint");
 const skipHint = document.getElementById("skip-hint");
-const ctx = canvas.getContext("2d", { alpha: true });
+const ctx = canvas.getContext("2d", { alpha: true, desynchronized: true });
 
 let w = 0;
 let h = 0;
@@ -61,6 +61,7 @@ const director = new SceneDirector();
 
 const dedicationEl = mountDedication(app);
 const dedication = new DedicationController(dedicationEl);
+dedication.enabled = false; // 不显示中间寄语
 mountMuteButton(app, audio);
 
 let bokeh = [];
@@ -119,10 +120,6 @@ const intro = new IntroCeremony({
     introDone = true;
     veil.classList.add("ready");
     skipHint?.classList.add("hide");
-    // Soft dedication after intro settles
-    setTimeout(() => {
-      if (!dedication.shownOnce) dedication.show(5.5);
-    }, 2800);
   },
 });
 
@@ -135,11 +132,9 @@ function triggerEgg() {
   for (let i = 0; i < n; i++) {
     petals.spawnAmbient(w, h, 1);
   }
-  // A few soft bursts across the sky
   burstAt(w * 0.5, h * 0.35, { silent: false, fromIntro: true });
   setTimeout(() => burstAt(w * 0.32, h * 0.48, { silent: true, fromIntro: true }), 280);
   setTimeout(() => burstAt(w * 0.68, h * 0.46, { silent: true, fromIntro: true }), 480);
-  dedication.show(6);
   audio.playBloom(1.2);
 }
 
@@ -239,7 +234,6 @@ canvas.addEventListener("pointerup", async (e) => {
   if (pointer.down) {
     if (!pointer.moved && held < 0.55) {
       burstAt(p.x, p.y);
-      if (!dedication.shownOnce) setTimeout(() => dedication.show(5), 900);
     } else if (held >= 0.6) {
       burstAt(p.x, p.y, { cluster: true });
     } else if (pointer.moved && held < 0.6) {
@@ -345,11 +339,6 @@ function tick(now) {
 
   if (introDone) {
     idleSinceInteract += dt;
-    // Re-show dedication after long peaceful idle
-    if (idleSinceInteract > 22 && !dedication.visible && dedication.cooldown <= 0) {
-      dedication.show(4.5);
-      idleSinceInteract = 0;
-    }
 
     const ev = director.tickEvents(dt, introDone);
     if (ev) runIdleEvent(ev);
@@ -382,33 +371,32 @@ function tick(now) {
   updateDust(dust, dt, w, h, wind);
   updateMidSilhouettes(mids, dt, time);
 
-  // Draw with micro-camera + dpr
+  // Draw with micro-camera + dpr (camera must preserve dpr — avoids HiDPI seam)
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
-  director.applyCamera(ctx, w, h);
+  director.applyCamera(ctx, w, h, dpr);
 
   drawStars(ctx, stars, time);
   drawBokeh(ctx, bokeh, time, breath);
   drawMist(ctx, w, h, time, breath);
   drawMidSilhouettes(ctx, mids, time, parallax, wind);
   drawGround(ctx, w, h, fallen, breath);
-
-  // Dust with boost
   drawDust(ctx, dust, time, breath, director.getDustMul());
 
   ripples.draw(ctx);
   garden.draw(ctx);
   petals.draw(ctx);
 
-  // Warmth color director overlay
+  // Fullscreen overlays in un-camera'd space so they always cover the viewport
+  director.resetView(ctx, dpr);
+
   const warm = director.getWarmth();
   ctx.save();
   ctx.globalCompositeOperation = "screen";
-  ctx.fillStyle = `rgba(${warm.r|0},${warm.g|0},${warm.b|0},${warm.a})`;
+  ctx.fillStyle = `rgba(${warm.r | 0},${warm.g | 0},${warm.b | 0},${warm.a})`;
   ctx.fillRect(0, 0, w, h);
   ctx.restore();
 
-  // Soft warmth pulse + adaptive vignette
   const pulse = 0.012 + (breath - 1) * 0.08 + Math.sin(time * 0.35) * 0.006;
   const vg = ctx.createRadialGradient(
     w * 0.5,

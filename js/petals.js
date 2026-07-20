@@ -6,6 +6,8 @@ import { COLORS, mixRGB, petalTint, rand, rgba, clamp } from "./utils.js";
  */
 export function createPetalSprites() {
   const variants = [];
+  const softMid = [];
+  const softFar = [];
   const shapes = [
     { w: 64, h: 96, curve: 0.35, tip: 0.55, kind: "rose" },
     { w: 72, h: 100, curve: 0.42, tip: 0.48, kind: "rose" },
@@ -16,8 +18,12 @@ export function createPetalSprites() {
 
   for (let i = 0; i < shapes.length; i++) {
     const tint = petalTint(0.12 + i * 0.16);
-    variants.push(renderPetalSprite(shapes[i], tint, 0.95));
-    variants.push(renderPetalSprite(shapes[i], mixRGB(tint, COLORS.ivory, 0.35), 0.85));
+    const sharp = renderPetalSprite(shapes[i], tint, 0.95);
+    const light = renderPetalSprite(shapes[i], mixRGB(tint, COLORS.ivory, 0.35), 0.85);
+    variants.push(sharp, light);
+    // Bake depth-of-field once (avoids per-frame ctx.filter cost)
+    softMid.push(softenSprite(sharp, 0.55), softenSprite(light, 0.55));
+    softFar.push(softenSprite(sharp, 1.15), softenSprite(light, 1.15));
   }
 
   const glow = document.createElement("canvas");
@@ -42,7 +48,20 @@ export function createPetalSprites() {
   bctx.fillStyle = bg;
   bctx.fillRect(0, 0, 96, 96);
 
-  return { variants, glow, bokeh };
+  return { variants, softMid, softFar, glow, bokeh };
+}
+
+/** Pre-blur a sprite into a new canvas (one-time cost). */
+function softenSprite(src, blurPx) {
+  const pad = Math.ceil(blurPx * 2) + 2;
+  const canvas = document.createElement("canvas");
+  canvas.width = src.width + pad * 2;
+  canvas.height = src.height + pad * 2;
+  const ctx = canvas.getContext("2d");
+  ctx.filter = `blur(${blurPx}px)`;
+  ctx.drawImage(src, pad, pad);
+  ctx.filter = "none";
+  return canvas;
 }
 
 function renderPetalSprite({ w, h, curve, tip, kind }, tint, alpha) {
@@ -149,6 +168,7 @@ export class PetalField {
       sway: 0,
       swayAmp: 1,
       depth: 1,
+      layer: 2,
     };
   }
 
@@ -161,8 +181,21 @@ export class PetalField {
     this.pool.push(p);
   }
 
-  _pickSprite() {
-    return this.sprites.variants[(Math.random() * this.sprites.variants.length) | 0];
+  _pickSprite(depth) {
+    const i = (Math.random() * this.sprites.variants.length) | 0;
+    if (this.enableBlur && depth < 0.55 && this.sprites.softFar?.length) {
+      return this.sprites.softFar[i];
+    }
+    if (this.enableBlur && depth < 0.75 && this.sprites.softMid?.length) {
+      return this.sprites.softMid[i];
+    }
+    return this.sprites.variants[i];
+  }
+
+  _layerFor(depth) {
+    if (depth < 0.55) return 0; // far
+    if (depth < 0.85) return 1; // mid
+    return 2; // near
   }
 
   spawnAmbient(w, h, n = 1) {
@@ -180,11 +213,12 @@ export class PetalField {
       p.scale = rand(0.25, 0.72) * (0.55 + depth * 0.55);
       p.life = 0;
       p.maxLife = rand(7, 14);
-      p.sprite = this._pickSprite();
+      p.sprite = this._pickSprite(depth);
       p.alpha = rand(0.4, 0.92) * (0.55 + depth * 0.45);
       p.sway = rand(0, Math.PI * 2);
       p.swayAmp = rand(16, 40);
       p.depth = depth;
+      p.layer = this._layerFor(depth);
       this.list.push(p);
     }
   }
@@ -205,11 +239,12 @@ export class PetalField {
     p.scale = rand(0.35, 0.8) * depth;
     p.life = 0;
     p.maxLife = rand(6, 11);
-    p.sprite = this._pickSprite();
+    p.sprite = this._pickSprite(depth);
     p.alpha = rand(0.55, 0.9);
     p.sway = rand(0, Math.PI * 2);
     p.swayAmp = rand(20, 48);
     p.depth = depth;
+    p.layer = this._layerFor(depth);
     this.list.push(p);
   }
 
@@ -233,11 +268,12 @@ export class PetalField {
       p.scale = rand(0.35, 0.95) * depth;
       p.life = 0;
       p.maxLife = rand(4.5, 9);
-      p.sprite = this._pickSprite();
+      p.sprite = this._pickSprite(depth);
       p.alpha = rand(0.55, 0.95);
       p.sway = rand(0, Math.PI * 2);
       p.swayAmp = rand(25, 60);
       p.depth = depth;
+      p.layer = this._layerFor(depth);
       this.list.push(p);
     }
   }
@@ -261,11 +297,12 @@ export class PetalField {
       p.scale = rand(0.28, 0.55) * depth;
       p.life = 0;
       p.maxLife = rand(2.8, 5);
-      p.sprite = this._pickSprite();
+      p.sprite = this._pickSprite(depth);
       p.alpha = rand(0.45, 0.8);
       p.sway = rand(0, Math.PI * 2);
       p.swayAmp = rand(14, 30);
       p.depth = depth;
+      p.layer = this._layerFor(depth);
       this.list.push(p);
     }
   }
@@ -322,40 +359,32 @@ export class PetalField {
   }
 
   draw(ctx) {
-    // Sort far → near for soft depth layering
-    const sorted = this.list.slice().sort((a, b) => a.depth - b.depth);
+    // Draw far → mid → near without sorting every frame
+    for (let layer = 0; layer < 3; layer++) {
+      for (let i = 0; i < this.list.length; i++) {
+        const p = this.list[i];
+        if (p.layer !== layer) continue;
 
-    for (let i = 0; i < sorted.length; i++) {
-      const p = sorted[i];
-      const lifeT = p.life / p.maxLife;
-      let a = p.alpha;
-      if (lifeT < 0.08) a *= lifeT / 0.08;
-      if (lifeT > 0.72) a *= 1 - (lifeT - 0.72) / 0.28;
+        const lifeT = p.life / p.maxLife;
+        let a = p.alpha;
+        if (lifeT < 0.08) a *= lifeT / 0.08;
+        if (lifeT > 0.72) a *= 1 - (lifeT - 0.72) / 0.28;
 
-      // Depth of field: far softer/fainter, near clearer
-      const depthFade = clamp(0.45 + p.depth * 0.55, 0.35, 1);
-      a *= depthFade;
+        const depthFade = clamp(0.45 + p.depth * 0.55, 0.35, 1);
+        a *= depthFade;
 
-      const spr = p.sprite;
-      const scaleMul = 0.7 + p.depth * 0.35;
-      const sw = spr.width * p.scale * scaleMul;
-      const sh = spr.height * p.scale * scaleMul;
+        const spr = p.sprite;
+        const scaleMul = 0.7 + p.depth * 0.35;
+        const sw = spr.width * p.scale * scaleMul;
+        const sh = spr.height * p.scale * scaleMul;
 
-      ctx.save();
-      ctx.translate(p.x, p.y);
-      ctx.rotate(p.rot);
-      ctx.globalAlpha = Math.max(0, a);
-
-      // Soft blur only for far petals (skip on low quality)
-      if (this.enableBlur && p.depth < 0.55) {
-        ctx.filter = "blur(1.1px)";
-      } else if (this.enableBlur && p.depth < 0.75) {
-        ctx.filter = "blur(0.5px)";
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rot);
+        ctx.globalAlpha = Math.max(0, a);
+        ctx.drawImage(spr, -sw / 2, -sh / 2, sw, sh);
+        ctx.restore();
       }
-
-      ctx.drawImage(spr, -sw / 2, -sh / 2, sw, sh);
-      ctx.filter = "none";
-      ctx.restore();
     }
   }
 
