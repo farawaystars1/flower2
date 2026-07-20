@@ -9,7 +9,7 @@ import {
   randInt,
   rgba,
   COLORS,
-} from "./utils.js";
+} from "./utils.js?v=20260720c";
 
 function varietyProfile(kind) {
   if (kind === "peony") {

@@ -1,4 +1,4 @@
-import { clamp, lerp, rand } from "./utils.js";
+import { clamp, lerp, rand } from "./utils.js?v=20260720c";
 
 /**
  * Wave4 director: color shift, micro-camera, idle events, bloom-egg tracking.

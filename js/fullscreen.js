@@ -1,9 +1,8 @@
 /**
  * Immersive / fullscreen for desktop + mobile.
  *
- * Mobile browsers (esp. iOS / WeChat) often block Fullscreen API.
- * Strategy: always apply CSS immersive mode synchronously on gesture,
- * then also try native fullscreen where available.
+ * Desktop: native Fullscreen API on click.
+ * Mobile: CSS immersive on touch (iOS blocks Fullscreen API); also try native on Android.
  */
 
 export function isFullscreen() {
@@ -42,34 +41,24 @@ export function enterImmersiveFallback() {
   root.classList.add("immersive");
   body.classList.add("immersive");
 
-  // Stretch to largest available viewport units
   const h = Math.max(
-    window.innerHeight,
+    window.innerHeight || 0,
     window.visualViewport?.height || 0,
-    document.documentElement.clientHeight
+    root.clientHeight || 0,
+    1
   );
   root.style.setProperty("--app-h", `${h}px`);
-  body.style.height = `${h}px`;
 
-  // Try to collapse mobile browser chrome
   try {
-    window.scrollTo(0, 1);
+    window.scrollTo(0, 0);
     requestAnimationFrame(() => {
-      window.scrollTo(0, 0);
-      const h2 = Math.max(window.innerHeight, window.visualViewport?.height || 0);
+      const h2 = Math.max(
+        window.innerHeight || 0,
+        window.visualViewport?.height || 0,
+        1
+      );
       root.style.setProperty("--app-h", `${h2}px`);
     });
-  } catch {
-    /* ignore */
-  }
-
-  // Android: lock landscape/portrait to current if allowed
-  try {
-    const o = screen.orientation;
-    if (o?.lock) {
-      const type = o.type?.startsWith("landscape") ? "landscape" : "portrait";
-      o.lock(type).catch(() => {});
-    }
   } catch {
     /* ignore */
   }
@@ -81,7 +70,6 @@ export function exitImmersiveFallback() {
   document.documentElement.classList.remove("immersive");
   document.body.classList.remove("immersive");
   document.documentElement.style.removeProperty("--app-h");
-  document.body.style.height = "";
   try {
     screen.orientation?.unlock?.();
   } catch {
@@ -94,8 +82,8 @@ function tryNativeFullscreen(el) {
     if (el.requestFullscreen) {
       return el
         .requestFullscreen({ navigationUI: "hide" })
-        .catch(() => el.requestFullscreen())
-        .catch(() => false);
+        .then(() => true)
+        .catch(() => el.requestFullscreen().then(() => true).catch(() => false));
     }
     if (el.webkitRequestFullscreen) {
       el.webkitRequestFullscreen();
@@ -117,23 +105,21 @@ function tryNativeFullscreen(el) {
 
 /**
  * Enter immersive experience. Safe to call from a click/touch handler.
- * Applies CSS immersive immediately (sync), then attempts native FS.
+ * Desktop prefers native FS; mobile applies CSS immersive first.
  */
 export function enterFullscreen(el) {
   const target = el || document.getElementById("app") || document.documentElement;
+  const mobile = isMobileDevice() || isIOS();
 
-  // 1) Always sync immersive on mobile — this is what actually "works"
-  if (isMobileDevice() || isIOS()) {
+  if (mobile) {
     enterImmersiveFallback();
   }
 
   if (isFullscreen()) return Promise.resolve(true);
 
-  // 2) Also try native FS (desktop / Android Chrome)
   return tryNativeFullscreen(target)
     .then((ok) => {
       if (!ok || !isFullscreen()) {
-        // Ensure fallback even on desktop if FS denied
         enterImmersiveFallback();
       }
       return true;
@@ -171,39 +157,55 @@ export function toggleFullscreen(el) {
 }
 
 /**
- * Full-screen start gate — most reliable mobile entry.
- * User must tap the big button; we enter immersive in that same click.
+ * Start gate: desktop uses click → native fullscreen;
+ * mobile uses touchstart → CSS immersive (+ native if available).
  */
 export function mountStartGate(root, { onStart } = {}) {
+  const mobile = isMobileDevice();
   const gate = document.createElement("button");
   gate.id = "start-gate";
   gate.type = "button";
-  gate.setAttribute("aria-label", "轻触开始");
-  gate.innerHTML =
-    '<span class="gate-title">花语</span><span class="gate-line">轻触开始</span>';
+  gate.setAttribute("aria-label", mobile ? "轻触全屏" : "点击全屏");
+  gate.innerHTML = mobile
+    ? '<span class="gate-title">花语</span><span class="gate-line">轻触全屏</span>'
+    : '<span class="gate-title">花语</span><span class="gate-line">点击全屏</span>';
 
+  let started = false;
   const finish = (e) => {
+    if (started) return;
+    started = true;
     e.preventDefault();
     e.stopPropagation();
-    // Sync immersive + native FS in the same user gesture
-    enterImmersiveFallback();
-    void enterFullscreen(document.getElementById("app") || document.documentElement);
+
+    const target = document.getElementById("app") || document.documentElement;
+
+    // Must run fullscreen / immersive in the same user gesture, before any await
+    if (mobile) {
+      enterImmersiveFallback();
+      void tryNativeFullscreen(target).catch(() => {});
+    } else {
+      void enterFullscreen(target);
+    }
+
     gate.classList.add("hide");
-    setTimeout(() => gate.remove(), 700);
+    setTimeout(() => {
+      try {
+        gate.remove();
+      } catch {
+        /* ignore */
+      }
+    }, 700);
+
     onStart?.();
   };
 
-  // click is the most trusted gesture across mobile browsers
-  gate.addEventListener("click", finish, { once: true });
-  gate.addEventListener(
-    "touchend",
-    (e) => {
-      // Prevent ghost click issues; still run finish once
-      if (gate.classList.contains("hide")) return;
-      finish(e);
-    },
-    { once: true, passive: false }
-  );
+  if (mobile) {
+    // touchstart keeps the gesture token on iOS/Android; click as fallback
+    gate.addEventListener("touchstart", finish, { once: true, passive: false });
+    gate.addEventListener("click", finish, { once: true });
+  } else {
+    gate.addEventListener("click", finish, { once: true });
+  }
 
   root.appendChild(gate);
   return gate;

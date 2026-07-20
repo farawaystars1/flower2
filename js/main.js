@@ -1,11 +1,11 @@
-import { clamp, fbm, rand } from "./utils.js";
-import { createPetalSprites, PetalField } from "./petals.js";
+import { clamp, fbm, rand } from "./utils.js?v=20260720c";
+import { createPetalSprites, PetalField } from "./petals.js?v=20260720c";
 import {
   BloomGarden,
   createMidSilhouettes,
   updateMidSilhouettes,
   drawMidSilhouettes,
-} from "./flowers.js";
+} from "./flowers.js?v=20260720c";
 import {
   createBokeh,
   updateBokeh,
@@ -20,17 +20,17 @@ import {
   createFallenHints,
   RippleField,
   breathFactor,
-} from "./atmosphere.js";
-import { IntroCeremony } from "./intro.js";
-import { mountDedication, DedicationController } from "./dedication.js";
-import { SoftAudio, mountMuteButton } from "./audio.js";
-import { SceneDirector } from "./director.js";
+} from "./atmosphere.js?v=20260720c";
+import { IntroCeremony } from "./intro.js?v=20260720c";
+import { mountDedication, DedicationController } from "./dedication.js?v=20260720c";
+import { SoftAudio, mountMuteButton } from "./audio.js?v=20260720c";
+import { SceneDirector } from "./director.js?v=20260720c";
 import {
   enterFullscreen,
   mountFullscreenButton,
   mountStartGate,
   isImmersive,
-} from "./fullscreen.js";
+} from "./fullscreen.js?v=20260720c";
 
 function detectQuality() {
   const cores = navigator.hardwareConcurrency || 4;
@@ -95,10 +95,14 @@ let idleSinceInteract = 0;
 let activity = 0;
 
 function resize() {
-  // Prefer visualViewport on mobile (accounts for browser chrome / immersive)
+  // Prefer visualViewport on mobile, but ignore 0-size glitches during immersive transitions
   const vv = window.visualViewport;
-  w = Math.round(vv?.width || window.innerWidth);
-  h = Math.round(vv?.height || window.innerHeight);
+  const nextW = Math.round(vv?.width > 0 ? vv.width : window.innerWidth);
+  const nextH = Math.round(vv?.height > 0 ? vv.height : window.innerHeight);
+  if (nextW < 2 || nextH < 2) return;
+
+  w = nextW;
+  h = nextH;
   const maxPR = quality === "low" ? 1.25 : quality === "medium" ? 1.5 : 2;
   dpr = Math.min(window.devicePixelRatio || 1, maxPR);
   canvas.width = Math.floor(w * dpr);
@@ -166,9 +170,25 @@ mountStartGate(app, {
     fullscreenTried = true;
     userInteracted = true;
     void audio.unlock();
-    resize();
-    petals.spawnAmbient(w, h, quality === "low" ? 16 : 28);
-    intro.skip();
+
+    let begun = false;
+    const kick = () => {
+      resize();
+      if (begun || w < 2 || h < 2) return;
+      begun = true;
+      intro.active = true;
+      intro.t = 0;
+      petals.spawnAmbient(w, h, quality === "low" ? 12 : 22);
+    };
+    kick();
+    requestAnimationFrame(() => {
+      resize();
+      kick();
+      setTimeout(() => {
+        resize();
+        kick();
+      }, 150);
+    });
   },
 });
 

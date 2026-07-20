@@ -361,11 +361,9 @@ html:-webkit-full-screen #app {
   }
 }
 
-/* iOS / mobile fallback when Fullscreen API is unavailable */
+/* Mobile immersive fallback (iOS cannot use Fullscreen API) */
 html.immersive,
 html.immersive body {
-  position: fixed !important;
-  inset: 0 !important;
   width: 100% !important;
   max-width: 100% !important;
   height: var(--app-h, 100dvh) !important;
@@ -378,10 +376,10 @@ html.immersive body {
 }
 
 html.immersive #app {
-  position: fixed !important;
+  position: absolute !important;
   inset: 0 !important;
   width: 100% !important;
-  height: var(--app-h, 100dvh) !important;
+  height: 100% !important;
   min-height: -webkit-fill-available !important;
   padding: 0 !important;
   box-sizing: border-box !important;
@@ -392,6 +390,7 @@ html.immersive #c {
   inset: 0 !important;
   width: 100% !important;
   height: 100% !important;
+  touch-action: none;
 }
 
 #app::after {
