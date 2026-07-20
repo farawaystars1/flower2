@@ -1,26 +1,25 @@
-import { COLORS, mixRGB, petalTint, rand, rgba } from "./utils.js";
+import { COLORS, mixRGB, petalTint, rand, rgba, clamp } from "./utils.js";
 
 /**
- * Pre-render soft watercolor-like petal sprites (no hard 3D meshes).
- * Multiple variants for visual richness without looking noisy.
+ * Pre-render soft watercolor-like petal sprites.
+ * Includes rose / peony / sakura silhouette variants.
  */
 export function createPetalSprites() {
   const variants = [];
   const shapes = [
-    { w: 64, h: 96, curve: 0.35, tip: 0.55 },
-    { w: 72, h: 100, curve: 0.42, tip: 0.48 },
-    { w: 56, h: 88, curve: 0.28, tip: 0.62 },
-    { w: 80, h: 110, curve: 0.5, tip: 0.4 },
+    { w: 64, h: 96, curve: 0.35, tip: 0.55, kind: "rose" },
+    { w: 72, h: 100, curve: 0.42, tip: 0.48, kind: "rose" },
+    { w: 56, h: 88, curve: 0.28, tip: 0.62, kind: "sakura" },
+    { w: 80, h: 90, curve: 0.55, tip: 0.38, kind: "peony" },
+    { w: 70, h: 110, curve: 0.32, tip: 0.7, kind: "sakura" },
   ];
 
   for (let i = 0; i < shapes.length; i++) {
-    const tint = petalTint(0.15 + i * 0.2);
+    const tint = petalTint(0.12 + i * 0.16);
     variants.push(renderPetalSprite(shapes[i], tint, 0.95));
-    // lighter tip variant
     variants.push(renderPetalSprite(shapes[i], mixRGB(tint, COLORS.ivory, 0.35), 0.85));
   }
 
-  // soft glow disc for bloom centers / light
   const glow = document.createElement("canvas");
   glow.width = 128;
   glow.height = 128;
@@ -32,7 +31,6 @@ export function createPetalSprites() {
   gctx.fillStyle = gg;
   gctx.fillRect(0, 0, 128, 128);
 
-  // bokeh orb
   const bokeh = document.createElement("canvas");
   bokeh.width = 96;
   bokeh.height = 96;
@@ -47,7 +45,7 @@ export function createPetalSprites() {
   return { variants, glow, bokeh };
 }
 
-function renderPetalSprite({ w, h, curve, tip }, tint, alpha) {
+function renderPetalSprite({ w, h, curve, tip, kind }, tint, alpha) {
   const pad = 16;
   const canvas = document.createElement("canvas");
   canvas.width = w + pad * 2;
@@ -56,32 +54,27 @@ function renderPetalSprite({ w, h, curve, tip }, tint, alpha) {
   const cx = canvas.width / 2;
   const cy = pad + h * 0.92;
 
+  // Shape tweaks by kind
+  let c = curve;
+  let t = tip;
+  if (kind === "peony") {
+    c = curve * 1.15;
+    t = tip * 0.85;
+  } else if (kind === "sakura") {
+    c = curve * 0.85;
+    t = Math.min(0.78, tip * 1.15);
+  }
+
   ctx.save();
   ctx.translate(cx, cy);
   ctx.globalAlpha = alpha;
 
-  // Soft petal path (heart-ish tapered leaf)
   ctx.beginPath();
   ctx.moveTo(0, 0);
-  ctx.bezierCurveTo(
-    -w * curve,
-    -h * 0.25,
-    -w * 0.55,
-    -h * tip,
-    0,
-    -h
-  );
-  ctx.bezierCurveTo(
-    w * 0.55,
-    -h * tip,
-    w * curve,
-    -h * 0.25,
-    0,
-    0
-  );
+  ctx.bezierCurveTo(-w * c, -h * 0.25, -w * 0.55, -h * t, 0, -h);
+  ctx.bezierCurveTo(w * 0.55, -h * t, w * c, -h * 0.25, 0, 0);
   ctx.closePath();
 
-  // Base fill gradient root→tip
   const grad = ctx.createLinearGradient(0, 0, 0, -h);
   const deep = mixRGB(tint, COLORS.wine, 0.35);
   const mid = tint;
@@ -92,7 +85,6 @@ function renderPetalSprite({ w, h, curve, tip }, tint, alpha) {
   ctx.fillStyle = grad;
   ctx.fill();
 
-  // Soft edge veil (blurred feel via second translucent stroke)
   ctx.save();
   ctx.clip();
   const edge = ctx.createRadialGradient(0, -h * 0.35, h * 0.05, 0, -h * 0.3, h * 0.7);
@@ -103,7 +95,6 @@ function renderPetalSprite({ w, h, curve, tip }, tint, alpha) {
   ctx.fillRect(-w, -h, w * 2, h);
   ctx.restore();
 
-  // Vein hint (very soft)
   ctx.strokeStyle = rgba(COLORS.ivory, 0.18);
   ctx.lineWidth = 1.2;
   ctx.beginPath();
@@ -111,14 +102,13 @@ function renderPetalSprite({ w, h, curve, tip }, tint, alpha) {
   ctx.quadraticCurveTo(w * 0.04, -h * 0.5, 0, -h * 0.92);
   ctx.stroke();
 
-  // Outer glow bloom around petal
   ctx.globalCompositeOperation = "screen";
   ctx.filter = "blur(4px)";
   ctx.globalAlpha = 0.22;
   ctx.beginPath();
   ctx.moveTo(0, 0);
-  ctx.bezierCurveTo(-w * curve, -h * 0.25, -w * 0.55, -h * tip, 0, -h);
-  ctx.bezierCurveTo(w * 0.55, -h * tip, w * curve, -h * 0.25, 0, 0);
+  ctx.bezierCurveTo(-w * c, -h * 0.25, -w * 0.55, -h * t, 0, -h);
+  ctx.bezierCurveTo(w * 0.55, -h * t, w * c, -h * 0.25, 0, 0);
   ctx.fillStyle = rgba(mixRGB(tint, COLORS.blush, 0.4), 1);
   ctx.fill();
   ctx.filter = "none";
@@ -129,14 +119,16 @@ function renderPetalSprite({ w, h, curve, tip }, tint, alpha) {
 }
 
 /**
- * Soft falling / drifting petal particles.
+ * Soft falling / drifting petal particles with depth + pointer intimacy.
  */
 export class PetalField {
-  constructor(sprites, { max = 420 } = {}) {
+  constructor(sprites, { max = 420, enableBlur = true } = {}) {
     this.sprites = sprites;
     this.max = max;
+    this.enableBlur = enableBlur;
     this.list = [];
     this.pool = [];
+    this.trailCooldown = 0;
     for (let i = 0; i < max; i++) this.pool.push(this._fresh());
   }
 
@@ -169,41 +161,68 @@ export class PetalField {
     this.pool.push(p);
   }
 
+  _pickSprite() {
+    return this.sprites.variants[(Math.random() * this.sprites.variants.length) | 0];
+  }
+
   spawnAmbient(w, h, n = 1) {
     for (let i = 0; i < n; i++) {
       if (this.list.length >= this.max) break;
       const p = this._alloc();
-      const depth = rand(0.35, 1.15);
+      const depth = rand(0.3, 1.2);
       p.alive = true;
       p.x = rand(-40, w + 40);
       p.y = rand(-80, h * 0.55);
       p.vx = rand(-18, 18);
-      p.vy = rand(18, 48) * depth;
+      p.vy = rand(16, 46) * (0.55 + depth * 0.45);
       p.rot = rand(0, Math.PI * 2);
       p.vr = rand(-1.2, 1.2);
-      p.scale = rand(0.28, 0.75) * depth;
+      p.scale = rand(0.25, 0.72) * (0.55 + depth * 0.55);
       p.life = 0;
       p.maxLife = rand(7, 14);
-      p.sprite = this.sprites.variants[(Math.random() * this.sprites.variants.length) | 0];
-      p.alpha = rand(0.5, 0.95);
+      p.sprite = this._pickSprite();
+      p.alpha = rand(0.4, 0.92) * (0.55 + depth * 0.45);
       p.sway = rand(0, Math.PI * 2);
-      p.swayAmp = rand(18, 42);
+      p.swayAmp = rand(16, 40);
       p.depth = depth;
       this.list.push(p);
     }
   }
 
+  /** Occasional petal drifting in from screen edge */
+  spawnSideEntry(w, h) {
+    if (this.list.length >= this.max) return;
+    const p = this._alloc();
+    const fromLeft = Math.random() < 0.5;
+    const depth = rand(0.5, 1.1);
+    p.alive = true;
+    p.x = fromLeft ? -30 : w + 30;
+    p.y = rand(h * 0.1, h * 0.55);
+    p.vx = fromLeft ? rand(28, 70) : rand(-70, -28);
+    p.vy = rand(8, 35);
+    p.rot = rand(0, Math.PI * 2);
+    p.vr = rand(-1.5, 1.5);
+    p.scale = rand(0.35, 0.8) * depth;
+    p.life = 0;
+    p.maxLife = rand(6, 11);
+    p.sprite = this._pickSprite();
+    p.alpha = rand(0.55, 0.9);
+    p.sway = rand(0, Math.PI * 2);
+    p.swayAmp = rand(20, 48);
+    p.depth = depth;
+    this.list.push(p);
+  }
+
   spawnBurst(x, y, n = 55) {
     for (let i = 0; i < n; i++) {
       if (this.list.length >= this.max) {
-        // recycle oldest
         const old = this.list.shift();
         this._free(old);
       }
       const p = this._alloc();
       const ang = rand(-Math.PI * 0.15, Math.PI * 1.15);
       const speed = rand(80, 280);
-      const depth = rand(0.6, 1.25);
+      const depth = rand(0.55, 1.25);
       p.alive = true;
       p.x = x + rand(-8, 8);
       p.y = y + rand(-8, 8);
@@ -214,7 +233,7 @@ export class PetalField {
       p.scale = rand(0.35, 0.95) * depth;
       p.life = 0;
       p.maxLife = rand(4.5, 9);
-      p.sprite = this.sprites.variants[(Math.random() * this.sprites.variants.length) | 0];
+      p.sprite = this._pickSprite();
       p.alpha = rand(0.55, 0.95);
       p.sway = rand(0, Math.PI * 2);
       p.swayAmp = rand(25, 60);
@@ -223,8 +242,41 @@ export class PetalField {
     }
   }
 
-  update(dt, w, h, windX) {
+  /** Soft trail petals while dragging */
+  spawnTrail(x, y, maxPerCall = 2) {
+    if (this.trailCooldown > 0) return;
+    if (this.list.length > this.max * 0.85) return;
+    this.trailCooldown = 0.045;
+    for (let i = 0; i < maxPerCall; i++) {
+      if (this.list.length >= this.max) break;
+      const p = this._alloc();
+      const depth = rand(0.7, 1.15);
+      p.alive = true;
+      p.x = x + rand(-10, 10);
+      p.y = y + rand(-10, 10);
+      p.vx = rand(-40, 40);
+      p.vy = rand(-30, 20);
+      p.rot = rand(0, Math.PI * 2);
+      p.vr = rand(-2, 2);
+      p.scale = rand(0.28, 0.55) * depth;
+      p.life = 0;
+      p.maxLife = rand(2.8, 5);
+      p.sprite = this._pickSprite();
+      p.alpha = rand(0.45, 0.8);
+      p.sway = rand(0, Math.PI * 2);
+      p.swayAmp = rand(14, 30);
+      p.depth = depth;
+      this.list.push(p);
+    }
+  }
+
+  /**
+   * @param {object} pointer - {x,y,active} for hover attraction
+   */
+  update(dt, w, h, windX, pointer = null) {
+    if (this.trailCooldown > 0) this.trailCooldown -= dt;
     const g = 55;
+
     for (let i = this.list.length - 1; i >= 0; i--) {
       const p = this.list[i];
       p.life += dt;
@@ -238,6 +290,22 @@ export class PetalField {
       const sway = Math.sin(p.sway) * p.swayAmp;
       p.vx += (windX * 40 + sway * 0.15) * dt;
       p.vy += g * dt * 0.35;
+
+      // Wave2: gentle pointer attraction / orbit
+      if (pointer && pointer.active) {
+        const dx = pointer.x - p.x;
+        const dy = pointer.y - p.y;
+        const dist = Math.hypot(dx, dy) || 1;
+        if (dist < 160) {
+          const force = (1 - dist / 160) * 55 * p.depth;
+          // attract inward but with tangential swirl
+          p.vx += (dx / dist) * force * dt * 0.55;
+          p.vy += (dy / dist) * force * dt * 0.4;
+          p.vx += (-dy / dist) * force * dt * 0.35;
+          p.vy += (dx / dist) * force * dt * 0.35;
+        }
+      }
+
       p.vx *= 0.992;
       p.vy *= 0.995;
 
@@ -245,7 +313,6 @@ export class PetalField {
       p.y += p.vy * dt;
       p.rot += p.vr * dt;
 
-      // soft settle near bottom
       if (p.y > h * 0.88) {
         p.vy *= 0.92;
         p.vx *= 0.96;
@@ -255,8 +322,9 @@ export class PetalField {
   }
 
   draw(ctx) {
-    // draw far→near by depth
-    const sorted = this.list;
+    // Sort far → near for soft depth layering
+    const sorted = this.list.slice().sort((a, b) => a.depth - b.depth);
+
     for (let i = 0; i < sorted.length; i++) {
       const p = sorted[i];
       const lifeT = p.life / p.maxLife;
@@ -264,15 +332,29 @@ export class PetalField {
       if (lifeT < 0.08) a *= lifeT / 0.08;
       if (lifeT > 0.72) a *= 1 - (lifeT - 0.72) / 0.28;
 
+      // Depth of field: far softer/fainter, near clearer
+      const depthFade = clamp(0.45 + p.depth * 0.55, 0.35, 1);
+      a *= depthFade;
+
       const spr = p.sprite;
-      const sw = spr.width * p.scale;
-      const sh = spr.height * p.scale;
+      const scaleMul = 0.7 + p.depth * 0.35;
+      const sw = spr.width * p.scale * scaleMul;
+      const sh = spr.height * p.scale * scaleMul;
 
       ctx.save();
       ctx.translate(p.x, p.y);
       ctx.rotate(p.rot);
       ctx.globalAlpha = Math.max(0, a);
+
+      // Soft blur only for far petals (skip on low quality)
+      if (this.enableBlur && p.depth < 0.55) {
+        ctx.filter = "blur(1.1px)";
+      } else if (this.enableBlur && p.depth < 0.75) {
+        ctx.filter = "blur(0.5px)";
+      }
+
       ctx.drawImage(spr, -sw / 2, -sh / 2, sw, sh);
+      ctx.filter = "none";
       ctx.restore();
     }
   }
