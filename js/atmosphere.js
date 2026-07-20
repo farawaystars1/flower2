@@ -1,4 +1,4 @@
-import { rand, COLORS, rgba, lerp } from "./utils.js?v=20260720c";
+import { rand, COLORS, rgba, lerp } from "./utils.js?v=20260720d";
 
 /**
  * Floating soft bokeh lights for romantic depth.

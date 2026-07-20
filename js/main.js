@@ -1,11 +1,11 @@
-import { clamp, fbm, rand } from "./utils.js?v=20260720c";
-import { createPetalSprites, PetalField } from "./petals.js?v=20260720c";
+import { clamp, fbm, rand } from "./utils.js?v=20260720d";
+import { createPetalSprites, PetalField } from "./petals.js?v=20260720d";
 import {
   BloomGarden,
   createMidSilhouettes,
   updateMidSilhouettes,
   drawMidSilhouettes,
-} from "./flowers.js?v=20260720c";
+} from "./flowers.js?v=20260720d";
 import {
   createBokeh,
   updateBokeh,
@@ -20,17 +20,18 @@ import {
   createFallenHints,
   RippleField,
   breathFactor,
-} from "./atmosphere.js?v=20260720c";
-import { IntroCeremony } from "./intro.js?v=20260720c";
-import { mountDedication, DedicationController } from "./dedication.js?v=20260720c";
-import { SoftAudio, mountMuteButton } from "./audio.js?v=20260720c";
-import { SceneDirector } from "./director.js?v=20260720c";
+} from "./atmosphere.js?v=20260720d";
+import { IntroCeremony } from "./intro.js?v=20260720d";
+import { mountDedication, DedicationController } from "./dedication.js?v=20260720d";
+import { SoftAudio, mountMuteButton } from "./audio.js?v=20260720d";
+import { SceneDirector } from "./director.js?v=20260720d";
 import {
   enterFullscreen,
   mountFullscreenButton,
   mountStartGate,
   isImmersive,
-} from "./fullscreen.js?v=20260720c";
+  getViewportSize,
+} from "./fullscreen.js?v=20260720d";
 
 function detectQuality() {
   const cores = navigator.hardwareConcurrency || 4;
@@ -95,10 +96,7 @@ let idleSinceInteract = 0;
 let activity = 0;
 
 function resize() {
-  // Prefer visualViewport on mobile, but ignore 0-size glitches during immersive transitions
-  const vv = window.visualViewport;
-  const nextW = Math.round(vv?.width > 0 ? vv.width : window.innerWidth);
-  const nextH = Math.round(vv?.height > 0 ? vv.height : window.innerHeight);
+  const { w: nextW, h: nextH } = getViewportSize();
   if (nextW < 2 || nextH < 2) return;
 
   w = nextW;
@@ -132,6 +130,7 @@ mountMuteButton(app, audio);
 mountFullscreenButton(app, {
   target: document.getElementById("app") || document.documentElement,
   onChange: () => resize(),
+  onResize: () => resize(),
 });
 
 const intro = new IntroCeremony({
@@ -165,6 +164,7 @@ if (skipHint) {
 }
 
 mountStartGate(app, {
+  onResize: () => resize(),
   onStart: () => {
     experienceStarted = true;
     fullscreenTried = true;
@@ -184,10 +184,12 @@ mountStartGate(app, {
     requestAnimationFrame(() => {
       resize();
       kick();
-      setTimeout(() => {
-        resize();
-        kick();
-      }, 150);
+      for (const ms of [80, 200, 500]) {
+        setTimeout(() => {
+          resize();
+          kick();
+        }, ms);
+      }
     });
   },
 });
@@ -239,10 +241,9 @@ function localPos(e) {
 }
 
 function onUserGesture() {
-  // Fullscreen FIRST — must not await anything before this (mobile gesture token)
   if (!fullscreenTried && !isImmersive()) {
     fullscreenTried = true;
-    void enterFullscreen(document.documentElement).then(() => {
+    void enterFullscreen(document.documentElement, { onResize: () => resize() }).then(() => {
       resize();
     });
   }

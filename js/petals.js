@@ -1,4 +1,4 @@
-import { COLORS, mixRGB, petalTint, rand, rgba, clamp } from "./utils.js?v=20260720c";
+import { COLORS, mixRGB, petalTint, rand, rgba, clamp } from "./utils.js?v=20260720d";
 
 /**
  * Pre-render soft watercolor-like petal sprites.

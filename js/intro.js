@@ -1,4 +1,4 @@
-import { clamp, easeOutCubic } from "./utils.js?v=20260720c";
+import { clamp, easeOutCubic } from "./utils.js?v=20260720d";
 
 /**
  * Opening ceremony: warm fog → first bloom → petals → ready.
