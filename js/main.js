@@ -30,8 +30,6 @@ import {
   mountFullscreenButton,
   mountStartGate,
   isImmersive,
-  isMobileDevice,
-  enterImmersiveFallback,
 } from "./fullscreen.js";
 
 function detectQuality() {
@@ -70,14 +68,9 @@ const director = new SceneDirector();
 const dedicationEl = mountDedication(app);
 const dedication = new DedicationController(dedicationEl);
 dedication.enabled = false; // 不显示中间寄语
-mountMuteButton(app, audio);
-mountFullscreenButton(app, {
-  target: document.getElementById("app") || document.documentElement,
-  onChange: () => resize(),
-});
 
 let fullscreenTried = false;
-let experienceStarted = true; // flipped false on mobile until start-gate tap
+let experienceStarted = false; // both desktop & mobile: wait for start gate
 
 let bokeh = [];
 let stars = [];
@@ -129,8 +122,13 @@ document.addEventListener("fullscreenchange", () => setTimeout(resize, 50));
 document.addEventListener("webkitfullscreenchange", () => setTimeout(resize, 50));
 if (window.visualViewport) {
   window.visualViewport.addEventListener("resize", () => resize());
-  window.visualViewport.addEventListener("scroll", () => resize());
 }
+
+mountMuteButton(app, audio);
+mountFullscreenButton(app, {
+  target: document.getElementById("app") || document.documentElement,
+  onChange: () => resize(),
+});
 
 const intro = new IntroCeremony({
   curtain,
@@ -147,35 +145,32 @@ const intro = new IntroCeremony({
   },
 });
 
-// Mobile: require an explicit start tap to enter immersive mode
-if (isMobileDevice()) {
-  experienceStarted = false;
-  intro.active = false;
-  if (curtain) {
-    curtain.classList.add("active");
-    curtain.style.opacity = "1";
-  }
-  if (hint) {
-    hint.style.animation = "none";
-    hint.style.opacity = "0";
-  }
-  if (skipHint) skipHint.style.opacity = "0";
-
-  mountStartGate(app, {
-    onStart: () => {
-      experienceStarted = true;
-      fullscreenTried = true;
-      userInteracted = true;
-      void audio.unlock();
-      resize();
-      // Jump into the garden after immersive is on
-      intro.skip();
-    },
-  });
-} else {
-  skipHint?.classList.add("show");
-  setTimeout(() => skipHint?.classList.add("hide"), 4500);
+// Pause intro until start gate — all devices (reliable fullscreen / audio unlock)
+experienceStarted = false;
+intro.active = false;
+if (curtain) {
+  curtain.classList.add("active");
+  curtain.style.opacity = "1";
 }
+if (hint) {
+  hint.style.animation = "none";
+  hint.style.opacity = "0";
+}
+if (skipHint) {
+  skipHint.style.opacity = "0";
+}
+
+mountStartGate(app, {
+  onStart: () => {
+    experienceStarted = true;
+    fullscreenTried = true;
+    userInteracted = true;
+    void audio.unlock();
+    resize();
+    petals.spawnAmbient(w, h, quality === "low" ? 16 : 28);
+    intro.skip();
+  },
+});
 
 function triggerEgg() {
   // Soft full-screen gentle petal rain (restrained)

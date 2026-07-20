@@ -235,7 +235,12 @@ export function mountFullscreenButton(root, { target, onChange } = {}) {
 
   document.addEventListener("fullscreenchange", sync);
   document.addEventListener("webkitfullscreenchange", sync);
-  sync();
+  // Do NOT call onChange during initial sync — callers may not be ready yet
+  const on = isImmersive();
+  btn.classList.toggle("on", on);
+  btn.textContent = on ? "窗" : "全";
+  btn.title = on ? "退出全屏" : "全屏";
+  btn.setAttribute("aria-label", on ? "退出全屏" : "全屏");
 
   root.appendChild(btn);
   return btn;
