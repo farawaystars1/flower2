@@ -28,7 +28,7 @@ import { SceneDirector } from "./director.js";
 import {
   enterFullscreen,
   mountFullscreenButton,
-  isFullscreen,
+  isImmersive,
 } from "./fullscreen.js";
 
 function detectQuality() {
@@ -95,8 +95,10 @@ let idleSinceInteract = 0;
 let activity = 0;
 
 function resize() {
-  w = window.innerWidth;
-  h = window.innerHeight;
+  // Prefer visualViewport on mobile (accounts for browser chrome / immersive)
+  const vv = window.visualViewport;
+  w = Math.round(vv?.width || window.innerWidth);
+  h = Math.round(vv?.height || window.innerHeight);
   const maxPR = quality === "low" ? 1.25 : quality === "medium" ? 1.5 : 2;
   dpr = Math.min(window.devicePixelRatio || 1, maxPR);
   canvas.width = Math.floor(w * dpr);
@@ -118,6 +120,10 @@ window.addEventListener("resize", resize);
 window.addEventListener("orientationchange", () => setTimeout(resize, 120));
 document.addEventListener("fullscreenchange", () => setTimeout(resize, 50));
 document.addEventListener("webkitfullscreenchange", () => setTimeout(resize, 50));
+if (window.visualViewport) {
+  window.visualViewport.addEventListener("resize", () => resize());
+  window.visualViewport.addEventListener("scroll", () => resize());
+}
 
 const intro = new IntroCeremony({
   curtain,
@@ -183,23 +189,23 @@ function localPos(e) {
   return { x: e.clientX - rect.left, y: e.clientY - rect.top };
 }
 
-async function onUserGesture() {
+function onUserGesture() {
+  // Fullscreen FIRST — must not await anything before this (mobile gesture token)
+  if (!fullscreenTried && !isImmersive()) {
+    fullscreenTried = true;
+    void enterFullscreen(document.documentElement).then(() => {
+      resize();
+    });
+  }
   if (!userInteracted) {
     userInteracted = true;
-    await audio.unlock();
-  }
-  // First touch → enter immersive fullscreen (browsers require a gesture)
-  if (!fullscreenTried && !isFullscreen()) {
-    fullscreenTried = true;
-    await enterFullscreen(document.documentElement);
-    // Fullscreen changes layout — refresh canvas metrics
-    resize();
+    void audio.unlock();
   }
   idleSinceInteract = 0;
 }
 
-canvas.addEventListener("pointerdown", async (e) => {
-  await onUserGesture();
+canvas.addEventListener("pointerdown", (e) => {
+  onUserGesture();
 
   if (intro.active) {
     intro.skip();
@@ -216,6 +222,19 @@ canvas.addEventListener("pointerdown", async (e) => {
   trailActive = false;
   canvas.setPointerCapture?.(e.pointerId);
 });
+
+// Extra mobile path: some WebViews only keep gesture on touchend/click
+canvas.addEventListener(
+  "touchend",
+  (e) => {
+    onUserGesture();
+    if (intro.active) {
+      e.preventDefault();
+      intro.skip();
+    }
+  },
+  { passive: false }
+);
 
 canvas.addEventListener("pointermove", (e) => {
   const p = localPos(e);
